@@ -1,17 +1,5 @@
 require 'pry'
 
-class Array
-  def only_uniq_elements?
-    self.length == self.uniq.length
-  end
-end
-
-class String
-  def to_a
-    self.split('')
-  end
-end
-
 class SudokuBoard
 
   def initialize(board)
@@ -20,7 +8,7 @@ class SudokuBoard
   end
 
   # rows are numbered 0..8
-  # returns the elements in row n
+  # returns the elements in row r
   def row(r)
     r = r.to_i
     beginning_idx = 9 * r
@@ -28,7 +16,8 @@ class SudokuBoard
     @board[beginning_idx..ending_idx]
   end
 
-  def each_row(&block)
+  # iterates over every row
+  def each_row
     (0..8).each do |r|
       yield row(r)
     end
@@ -45,24 +34,13 @@ class SudokuBoard
     return column
   end
 
-  def each_column(&block)
+  # iterates over every column
+  def each_column
     (0..8).each do |c|
       yield column(c)
     end
   end
-
-  def each_cell(&block)
-    @board.split('').each_with_index do |cell, n|
-      yield cell, n
-    end
-  end
-
-  def each_empty_cell(&block)
-    each_cell do |cell, n|
-      yield(cell, n) if cell == '0'
-    end
-  end
-
+  
   # returns the elements in box
   # for a given row and column
   def box(row, column)
@@ -81,8 +59,31 @@ class SudokuBoard
 
   end
 
+  # iterates over every box
+  def each_box
+    boxes = [[1,1], [1,4], [1,7], [4,1], [4,4], [4,7], [7,1], [7,4], [7,7]]
+    boxes.map! { |coordinates| box(coordinates[0], coordinates[1]) }
+    boxes.each do |box|
+      yield box
+    end
+  end
+  
+  # iterates over every cell
+  def each_cell
+    @board.split('').each_with_index do |cell, n|
+      yield cell, n
+    end
+  end
+
+  # iterates over every *empty* cell
+  def each_empty_cell
+    each_cell do |cell, n|
+      yield(cell, n) if cell == '0'
+    end
+  end
+
   # cells are numbered 0..80
-  # returns the coordinates (row,col)
+  # returns the coordinates (row,column)
   # for cell n
   def coordinates_for_cell(n)
     raise "Invalid cell index" unless (0..80).include? n
@@ -91,26 +92,26 @@ class SudokuBoard
     return row, column
   end
 
-  # returns the cell index for row and column
+  # returns the cell index (n) for a given row and column
   def cell_for_coordinates(row, column)
     raise "Invalid row" unless (0..8).include? row
     raise "Invalid column" unless (0..8).include? column
     row * 9 + column
   end
 
-  # returns the box number for row an column
+  # returns the box number for a cell with coordinates (row, column)
   def box_for_coordinates(row, column)
     3 * (row / 3) + (column / 3)
   end
 
-  # returns the content of the cell at row_column
+  # returns the content of the cell at coordinates (row, column)
   def [](row, column)
     n = cell_for_coordinates(row, column)
     @board[n]
   end
 
-  # replaces the contents of cell with coordinates row, column
-  # with new_content
+  # replaces the contents of cell at coordinates (row, column)
+  # with new_cell_content
   def []=(row, column, new_cell_content)
     unless new_cell_content.to_s.length == 1
       raise "Invalid cell content #{new_cell_content}"
@@ -123,40 +124,44 @@ class SudokuBoard
   def to_s
     str = ''
     each_row do |r|
-      str += r.to_s.gsub('0', '_').split('').join(" ") + "\n"
+      # substitute blank cells (0) with "_"
+      # separate 
+      str += r.to_s.gsub('0', '_').to_a.join(" ") + "\n"
     end
     return str
   end
 
-  def clone
-    SmartSudokuBoard.new(@board.dup)
-  end
-
+  # checks whether the board contains duplicates
+  # and returns true or false accordingly
   def has_duplicates?
 
-    each_row do |r|
-      puts r.to_s
-      return false unless row(r).to_a.only_uniq_elements?
+    each_row do |row|
+      return true unless row.to_a.only_uniq_elements?
     end
 
-    each_column do |c|
-      return false unless column(c).to_a.only_uniq_elements?
+    each_column do |column|
+      return true unless column.to_a.only_uniq_elements?
     end
 
-    each_box do |b|
-      return false unless box(b).to_a.only_uniq_elements?only_uniq_elements?
+    each_box  do |box|
+      return true unless box.to_a.only_uniq_elements?
     end
 
-    return true
+    return false
+    
   end
 
 end
 
 class ImpossibleBoard < StandardError
+  # raised whenever there's a cell
+  # with no feasible candidates
 end
 
 class SmartSudokuBoard < SudokuBoard
 
+  # returns all the feasible candidates
+  # for the cell at index n
   def candidates_for_cell(n)
 
     r, c = coordinates_for_cell(n)
@@ -172,6 +177,8 @@ class SmartSudokuBoard < SudokuBoard
 
   end
 
+  # tries to solve the board by filling in cells
+  # with only one feasible candidate
   def solve_by_logic
 
     no_edits_this_run = false
@@ -211,16 +218,25 @@ class SmartSudokuBoard < SudokuBoard
 
     end
 
-    # return the index of the cell with the least candidates
-    # and its possible candidates
-    # If the board is solved, return nil, nil
+    # return the index of the cell with the least number candidates
+    # and the possible candidates
+    # if the board is solved, return (nil, nil)
     return min_candidates_n, min_candidates
 
   end
 
+  # returns whether or not the board is solved
   def solved?
     ! @board.include?(0.to_s)
   end
+  
+  # returns a (deep) copy of itself
+  def clone
+    # REFACTOR:
+    # why doesn't self.new work?
+    SmartSudokuBoard.new(@board.dup)
+  end
+  
 end
 
 def solve_by_brute_force(board)
@@ -229,14 +245,14 @@ def solve_by_brute_force(board)
   #   # substitute as many candidates as possible by logic (scan)
   #   min_n, min_candidates = board.solve_by_logic
   #
-  #   if it's solved
+  #   if it's solved?
   #     print board
   #     return
   #   else it isn't
   #     for each min_candidate:
   #       substitute cell n with min_candidate
   #       begin
-  #         solve that board (solve(board))
+  #         solve that board (solve_by_brute_force(board))
   #       rescue ImpossibleBoard
   #         # by going to the next candidate
   #         next
@@ -248,9 +264,9 @@ def solve_by_brute_force(board)
   min_n, min_candidates = board.solve_by_logic
 
   if board.solved?
-    # if the board is solved, print it and 
-    # return
+    # if the board is solved, print it and return
     puts board
+    puts 'Has duplicates?: ' + board.has_duplicates?.to_s
     return
   else
 
@@ -271,7 +287,18 @@ def solve_by_brute_force(board)
     raise ImpossibleBoard
   end
 
+end
 
+class Array
+  def only_uniq_elements?
+    self.length == self.uniq.length
+  end
+end
+
+class String
+  def to_a
+    self.split('')
+  end
 end
 
 ##############################################################################################################
@@ -304,6 +331,8 @@ unsolved_boards.split("\n").each do |unsolved_board|
   puts
   b = SmartSudokuBoard.new(unsolved_board)
   solve_by_brute_force(b)
+  # b.solve_by_logic
+  # puts b
 end
 
 ##############################################################################################################
